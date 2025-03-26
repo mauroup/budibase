@@ -1,12 +1,46 @@
 version: "3"
 
 # optional ports are specified throughout for more advanced use cases.
+  
+
 
 services:
+  server-service:
+    build:
+      context: ../
+      dockerfile: packages/server/Dockerfile
+      args:
+        BUDIBASE_VERSION: "local-dev"
+    container_name: bbserver
+    ports:
+      - "4001:4001"
+    environment:
+      SELF_HOSTED: 1
+      COUCH_DB_URL: http://${COUCH_DB_USER}:${COUCH_DB_PASSWORD}@couchdb-service:5984
+      COUCH_DB_USERNAME: ${COUCH_DB_USER}
+      COUCH_DB_PASSWORD: ${COUCH_DB_PASSWORD}
+      WORKER_URL: http://worker-service:4003
+      MINIO_URL: http://minio-service:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      REDIS_URL: redis-service:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      API_ENCRYPTION_KEY: ${API_ENCRYPTION_KEY}
+      ENABLE_ANALYTICS: "true"
+      OFFLINE_MODE: ${OFFLINE_MODE:-}
+    depends_on:
+      - couchdb-service
+      - redis-service
+      - worker-service
+      - minio-service
   app-service:
     restart: unless-stopped
     image: budibase/apps
     container_name: bbapps
+    ports:                            # 👈 Esta sección es la que falta
+      - "4002:4002"                   # 👈 Esto expone el puerto para el navegador
     environment:
       SELF_HOSTED: 1
       COUCH_DB_URL: http://${COUCH_DB_USER}:${COUCH_DB_PASSWORD}@couchdb-service:5984
@@ -30,8 +64,8 @@ services:
     depends_on:
       - worker-service
       - redis-service
-  #    volumes:
-  #      - /some/path/to/plugins:/plugins
+      #    volumes:
+      #      - /some/path/to/plugins:/plugins
 
   worker-service:
     restart: unless-stopped

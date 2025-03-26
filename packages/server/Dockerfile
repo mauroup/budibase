@@ -8,7 +8,7 @@ LABEL com.centurylinklabs.watchtower.lifecycle.post-check="scripts/watchtower-ho
 WORKDIR /app
 
 ENV PORT=4001
-ENV COUCH_DB_URL=https://couchdb.budi.live:5984
+ENV COUCH_DB_URL=http://couchdb-service:5984
 ENV BUDIBASE_ENVIRONMENT=PRODUCTION
 ENV SERVICE=app-service
 ENV POSTHOG_TOKEN=phc_bIjZL7oh2GEUd2vqvTBH8WvrX0fWTFQMs6H5KQxiUxU
@@ -36,9 +36,9 @@ WORKDIR /app
 COPY packages/server/package.json .
 COPY packages/server/dist/yarn.lock .
 
-COPY scripts/removeWorkspaceDependencies.sh scripts/removeWorkspaceDependencies.sh
-RUN chmod +x ./scripts/removeWorkspaceDependencies.sh
-RUN ./scripts/removeWorkspaceDependencies.sh package.json
+#COPY scripts/removeWorkspaceDependencies.sh scripts/removeWorkspaceDependencies.sh
+#RUN chmod +x ./scripts/removeWorkspaceDependencies.sh
+#RUN ./scripts/removeWorkspaceDependencies.sh package.json
 
 # Install yarn packages with caching
 ARG TARGETPLATFORM
@@ -49,8 +49,8 @@ RUN --mount=type=cache,target=/root/.yarn/${TARGETPLATFORM} YARN_CACHE_FOLDER=/r
 
 COPY packages/server/dist/ dist/
 COPY packages/server/docker_run.sh .
-COPY packages/server/builder/ builder/
-COPY packages/server/client/ client/
+#COPY packages/server/builder/builder/
+#COPY packages/server/client/client/
 COPY packages/server/pm2.config.js .
 
 ARG BUDIBASE_VERSION

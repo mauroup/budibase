@@ -2,14 +2,12 @@
 
 echo "Starting runner.sh..."
 
-# set defaults for Docker-related variables
 export APP_PORT="${APP_PORT:-4001}"
 export ARCHITECTURE="${ARCHITECTURE:-amd}"
 export BUDIBASE_ENVIRONMENT="${BUDIBASE_ENVIRONMENT:-PRODUCTION}"
 export CLUSTER_PORT="${CLUSTER_PORT:-80}"
 export DEPLOYMENT_ENVIRONMENT="${DEPLOYMENT_ENVIRONMENT:-docker}"
 
-# only set MINIO_URL if neither MINIO_URL nor USE_S3 is set
 if [[ -z "${MINIO_URL}" && -z "${USE_S3}" ]]; then
   export MINIO_URL="http://127.0.0.1:9000"
 fi
@@ -24,7 +22,6 @@ export WORKER_URL="${WORKER_URL:-http://127.0.0.1:4002}"
 export APPS_URL="${APPS_URL:-http://127.0.0.1:4001}"
 export SERVER_TOP_LEVEL_PATH="${SERVER_TOP_LEVEL_PATH:-/app}"
 
-# set DATA_DIR and ensure the directory exists
 if [[ ${TARGETBUILD} == "aas" ]]; then
     export DATA_DIR="/home"
 else
@@ -32,7 +29,6 @@ else
 fi
 mkdir -p "${DATA_DIR}"
 
-# mount NFS or GCP Filestore if FILESHARE_IP and FILESHARE_NAME are set
 if [[ -n "${FILESHARE_IP}" && -n "${FILESHARE_NAME}" ]]; then
     echo "Mounting NFS share"
     apt update && apt install -y nfs-common nfs-kernel-server
@@ -41,14 +37,12 @@ if [[ -n "${FILESHARE_IP}" && -n "${FILESHARE_NAME}" ]]; then
     echo "Mounting result: $?"
 fi
 
-# source environment variables from a .env file if it exists in DATA_DIR
 if [[ -f "${DATA_DIR}/.env" ]]; then
-    set -a  # Automatically export all variables loaded from .env
+    set -a
     source "${DATA_DIR}/.env"
     set +a
 fi
 
-# randomize any unset sensitive environment variables using uuidgen
 env_vars=(COUCHDB_USER COUCHDB_PASSWORD MINIO_ACCESS_KEY MINIO_SECRET_KEY INTERNAL_API_KEY JWT_SECRET REDIS_PASSWORD)
 for var in "${env_vars[@]}"; do
     if [[ -z "${!var}" ]]; then
@@ -77,12 +71,10 @@ if [ ! -f "${DATA_DIR}/.env" ]; then
     echo "COUCH_DB_URL=${COUCH_DB_URL}" >>${DATA_DIR}/.env
 fi
 
-# Read in the .env file and export the variables
 for LINE in $(cat ${DATA_DIR}/.env); do export $LINE; done
 ln -s ${DATA_DIR}/.env /app/.env
 ln -s ${DATA_DIR}/.env /worker/.env
 
-# make these directories in runner, incase of mount
 mkdir -p ${DATA_DIR}/minio
 mkdir -p ${DATA_DIR}/redis
 mkdir -p ${DATA_DIR}/couch
@@ -91,20 +83,25 @@ chown -R couchdb:couchdb ${DATA_DIR}/couch
 REDIS_CONFIG="/etc/redis/redis.conf"
 sed -i "s#DATA_DIR#${DATA_DIR}#g" "${REDIS_CONFIG}"
 
+# 👉 NUEVO BLOQUE para evitar error de requirepass mal definido
+if [[ -n "${REDIS_PASSWORD}" ]]; then
+    if ! grep -q "^requirepass " "${REDIS_CONFIG}"; then
+        echo "requirepass ${REDIS_PASSWORD}" >> "${REDIS_CONFIG}"
+    else
+        sed -i "s/^requirepass .*/requirepass ${REDIS_PASSWORD}/" "${REDIS_CONFIG}"
+    fi
+fi
+
 if [[ -n "${USE_DEFAULT_REDIS_CONFIG}" ]]; then
     REDIS_CONFIG=""
 fi
 
-if [[ -n "${REDIS_PASSWORD}" ]]; then
-    redis-server "${REDIS_CONFIG}" --requirepass $REDIS_PASSWORD >/dev/stdout 2>&1 &
-else
-    redis-server "${REDIS_CONFIG}" >/dev/stdout 2>&1 &
-fi
+# ✅ Ejecutar Redis solo con config file
+redis-server "${REDIS_CONFIG}" >/dev/stdout 2>&1 &
 
 echo "Starting callback CouchDB runner..."
 ./bbcouch-runner.sh &
 
-# only start minio if use s3 isn't passed
 if [[ -z "${USE_S3}" ]]; then
     if [[ ${TARGETBUILD} == aas ]]; then
         echo "Starting MinIO in Azure Gateway mode"
@@ -121,15 +118,12 @@ fi
 
 /etc/init.d/nginx restart
 if [[ ! -z "${CUSTOM_DOMAIN}" ]]; then
-    # Add monthly cron job to renew certbot certificate
     echo -n "* * 2 * * root exec /app/letsencrypt/certificate-renew.sh ${CUSTOM_DOMAIN}" >>/etc/cron.d/certificate-renew
     chmod +x /etc/cron.d/certificate-renew
-    # Request the certbot certificate
     /app/letsencrypt/certificate-request.sh ${CUSTOM_DOMAIN}
     /etc/init.d/nginx restart
 fi
 
-# wait for backend services to start
 sleep 10
 
 pushd app
